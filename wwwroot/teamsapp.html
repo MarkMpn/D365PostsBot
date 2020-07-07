@@ -1,0 +1,78 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1" name="viewport" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📢</text></svg>">
+    <title>D365 Posts Bot - Teams App Installation</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css" integrity="sha384-9aIt2nRpC12Uk9gS9baDl411NQApFmC26EwAOH8WgZl5MYYxFfc+NcPb1dKGj7Sk" crossorigin="anonymous">
+    <style type="text/css">
+        .circle {
+            width: 100px;
+            height: 100px;
+            margin-left: auto;
+            margin-right: auto;
+            border-radius: 50%;
+            background-color: cornflowerblue;
+            line-height: 100px;
+            text-align: center;
+            color: white;
+            font-size: 50px;
+        }
+
+        .line {
+            height: 100px;
+            margin-left: 50%;
+            border-left: 5px solid cornflowerblue;
+            padding-left: 10px;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <main role="main" class="container">
+        <div class="header">
+            <h1 style="text-align: center">📢 D365 Posts Bot</h1>
+            <p style="text-align: center; margin-top: 0; color: gray">by <a href="https://markcarrington.dev">Mark Carrington</a></p>
+        </div>
+
+        <div class="row" style="margin-top: 50px; border-top: solid 1px gray; padding-top: 50px">
+            <div class="col-md-8">
+                <h2>Teams App Installation</h2>
+                <p>
+                    Before a user can receive notifications from the bot, they must have initiated a conversation with it. You can do this manually with individual
+                    users to test it, then automatically for all users for a wider roll-out:
+                </p>
+
+                <h3>Manual Installation</h3>
+                <ol>
+                    <li>Go to the <a href="https://admin.teams.microsoft.com" target="_top">Microsoft Teams Admin Center</a></li>
+                    <li>Under the "Teams apps" menu, select "Manage apps"</li>
+                    <li>Click "+ Upload"</li>
+                    <li>Upload the <a href="D365PostsBot.zip">D365PostsBot.zip</a> file</li>
+                    <li>In Teams, click "Apps"</li>
+                    <li>Select the "D365 Posts Bot" app</li>
+                    <li>Click "Add"</li>
+                </ol>
+
+                <h3>Automatic Installation</h3>
+                <ol>
+                    <li>Complete the steps above to do the initial installation for at least one user</li>
+                    <li><a href="https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=0436a86f-c175-43ad-bb20-9496b6f7d487&response_type=token&redirect_uri=https%3A%2F%2Fbot.markcarrington.dev%2Flistusers.html&response_mode=fragment&scope=https%3A%2F%2Fgraph.microsoft.com%2FUser.ReadWrite.All%20https%3A%2F%2Fgraph.microsoft.com%2FAppCatalog.Read.All">Get a list of users to install the app for</a></li>
+                </ol>
+            </div>
+            <div class="col-md-4">
+                <div class="circle">1</div>
+                <div class="line"><a href="https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=0436a86f-c175-43ad-bb20-9496b6f7d487&response_type=code&redirect_uri=https%3A%2F%2Fbot.markcarrington.dev%2F&response_mode=query&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default">Grant access for the application</a></div>
+                <div class="circle">2</div>
+                <div class="line">Install the <a href="solution.html">managed solution</a></div>
+                <div class="circle">3</div>
+                <div class="line">Authorize the <a href="appuser.html">application user</a></div>
+                <div class="circle">4</div>
+                <div class="line">Install the <a href="teamsapp.html">Teams app</a></div>
+                <div class="circle">fin</div>
+            </div>
+        </div>
+    </main>
+</body>
+</html>

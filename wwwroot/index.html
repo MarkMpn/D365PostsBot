@@ -1,0 +1,95 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1" name="viewport" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📢</text></svg>">
+    <title>D365 Posts Bot</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css" integrity="sha384-9aIt2nRpC12Uk9gS9baDl411NQApFmC26EwAOH8WgZl5MYYxFfc+NcPb1dKGj7Sk" crossorigin="anonymous">
+    <style type="text/css">
+        .circle {
+            width: 100px;
+            height: 100px;
+            margin-left: auto;
+            margin-right: auto;
+            border-radius: 50%;
+            background-color: cornflowerblue;
+            line-height: 100px;
+            text-align: center;
+            color: white;
+            font-size: 50px;
+        }
+
+        .line {
+            height: 100px;
+            margin-left: 50%;
+            border-left: 5px solid cornflowerblue;
+            padding-left: 10px;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <main role="main" class="container">
+        <div class="header">
+            <h1 style="text-align: center">📢 D365 Posts Bot</h1>
+            <p style="text-align: center; margin-top: 0; color: gray">by <a href="https://markcarrington.dev">Mark Carrington</a></p>
+        </div>
+
+        <div class="row" style="margin-top: 50px; border-top: solid 1px gray; padding-top: 50px">
+            <div class="col-md-8">
+                <img src="https://markcarrington.dev/wp-content/uploads/2020/06/Adaptive-Card-1.png" style="width: 400px; float: left" />
+                <h2>Teams notifications of D365 Posts</h2>
+                <p>
+                    Users are notified immediately when a new post is written on a record they're interested in. No configuration required -
+                    the bot works out who should be notified for each post automatically.
+                </p>
+
+                <div style="clear: both; height: 2em"></div>
+
+                <img src="https://markcarrington.dev/wp-content/uploads/2020/06/Adaptive-Card-2.png" style="width: 400px; float: right" />
+                <h2>Reply directly from Teams</h2>
+                <p>
+                    No jumping around between different apps, just reply directly to a notification within Teams. The reply is saved back to
+                    D365 and notifications are sent out as necessary.
+                </p>
+
+                <div style="clear: both; height: 2em"></div>
+
+                <h2>Free!</h2>
+                <p>
+                    Yes, really! Either use this hosted version or set up your own with the
+                    <a href="https://github.com/MarkMpn/D365PostsBot">open-source code</a>.
+                </p>
+
+                <h2>Quick Start</h2>
+                <p>
+                    Get set up in minutes with this simple 4-step setup.
+                </p>
+            </div>
+            <div class="col-md-4">
+                <div class="circle">1</div>
+                <div class="line">
+                    <a href="https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=0436a86f-c175-43ad-bb20-9496b6f7d487&response_type=code&redirect_uri=https%3A%2F%2Fbot.markcarrington.dev%2F&response_mode=query&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default">Grant access for the application</a>
+                    <span id="authorized" style="display: none">✔ Done!</span>
+                </div>
+                <div class="circle">2</div>
+                <div class="line">Install the <a href="solution.html">managed solution</a></div>
+                <div class="circle">3</div>
+                <div class="line">Authorize the <a href="appuser.html">application user</a></div>
+                <div class="circle">4</div>
+                <div class="line">Install the <a href="teamsapp.html">Teams app</a></div>
+                <div class="circle">fin</div>
+            </div>
+        </div>
+
+        <script type="text/javascript" async>
+            var urlParams = new URLSearchParams(window.location.search);
+            var code = urlParams.get("code");
+
+            if (code)
+                document.getElementById("authorized").style.display = "";
+        </script>
+    </main>
+</body>
+</html>

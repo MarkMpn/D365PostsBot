@@ -1,0 +1,182 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1" name="viewport" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📢</text></svg>">
+    <title>D365 Posts Bot - Solution Installation</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css" integrity="sha384-9aIt2nRpC12Uk9gS9baDl411NQApFmC26EwAOH8WgZl5MYYxFfc+NcPb1dKGj7Sk" crossorigin="anonymous">
+    <style type="text/css">
+        .circle {
+            width: 100px;
+            height: 100px;
+            margin-left: auto;
+            margin-right: auto;
+            border-radius: 50%;
+            background-color: cornflowerblue;
+            line-height: 100px;
+            text-align: center;
+            color: white;
+            font-size: 50px;
+        }
+
+        .line {
+            height: 100px;
+            margin-left: 50%;
+            border-left: 5px solid cornflowerblue;
+            padding-left: 10px;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <main role="main" class="container">
+        <div class="header">
+            <h1 style="text-align: center">📢 D365 Posts Bot</h1>
+            <p style="text-align: center; margin-top: 0; color: gray">by <a href="https://markcarrington.dev">Mark Carrington</a></p>
+        </div>
+
+        <div class="row" style="margin-top: 50px; border-top: solid 1px gray; padding-top: 50px">
+            <div class="col-md-8">
+                <h2>Solution Installation</h2>
+
+                <div id="details">
+                    <p>
+                        Setting authorization key...
+                    </p>
+                </div>
+                <div id="error" style="display: none">
+                    <p>
+                        ⚠ An error occurred:
+                    </p>
+                    <p id="errorDetails"></p>
+                </div>
+                <div id="complete" style="display: none">
+                    <p>
+                        ✔ Authorization key set successfully
+                    </p>
+                    <p>
+                        You can now continue to <a href="appuser.html">authorizing the application user</a>
+                    </p>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="circle">1</div>
+                <div class="line"><a href="https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=0436a86f-c175-43ad-bb20-9496b6f7d487&response_type=code&redirect_uri=https%3A%2F%2Fbot.markcarrington.dev%2F&response_mode=query&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default">Grant access for the application</a></div>
+                <div class="circle">2</div>
+                <div class="line">Install the <a href="solution.html">managed solution</a></div>
+                <div class="circle">3</div>
+                <div class="line">Authorize the <a href="appuser.html">application user</a></div>
+                <div class="circle">4</div>
+                <div class="line">Install the <a href="teamsapp.html">Teams app</a></div>
+                <div class="circle">fin</div>
+            </div>
+        </div>
+
+        <script type="text/javascript" async>
+            var getReq = function (url, token, successCallback, errorCallback) {
+                var req = new XMLHttpRequest();
+                req.open("GET", url);
+                req.setRequestHeader("Authorization", "Bearer " + token);
+                req.onreadystatechange = function () {
+                    if (this.readyState === XMLHttpRequest.DONE) {
+                        if (this.status === 200) {
+                            var obj = JSON.parse(this.response);
+                            successCallback(obj);
+                        }
+                        else if (this.status === 429) {
+                            setTimeout(function () {
+                                getReq(url, token, successCallback, errorCallback);
+                            }, 1000);
+                        }
+                        else {
+                            var obj = null;
+                            if (this.response)
+                                obj = JSON.parse(this.response);
+                            errorCallback(obj);
+                        }
+                    }
+                };
+                req.send();
+            };
+
+            var postReq = function (url, token, data, successCallback, errorCallback, method) {
+                if (!method)
+                    method = "POST";
+
+                var req = new XMLHttpRequest();
+                req.open(method, url);
+                req.setRequestHeader("Authorization", "Bearer " + token);
+                req.setRequestHeader("Content-Type", "application/json");
+                req.setRequestHeader("Prefer", "return=representation");
+                req.onreadystatechange = function () {
+                    if (this.readyState === XMLHttpRequest.DONE) {
+                        if (this.status === 200 || this.status === 201 || this.status === 204) {
+                            var obj = null;
+                            if (this.response)
+                                obj = JSON.parse(this.response);
+                            successCallback(obj);
+                        }
+                        else if (this.status === 429) {
+                            setTimeout(function () {
+                                postReq(url, token, data, successCallback, errorCallback);
+                            }, 1000);
+                        }
+                        else {
+                            var obj = null;
+                            if (this.response)
+                                obj = JSON.parse(this.response);
+                            errorCallback(obj);
+                        }
+                    }
+                };
+                req.send(JSON.stringify(data));
+            };
+
+            var urlParams = new URLSearchParams(window.location.hash);
+            var token = urlParams.get("#access_token");
+            var instance = urlParams.get("state");
+
+            if (!token) {
+                // Handle error
+                document.getElementById("details").style.display = "none";
+                document.getElementById("error").style.display = "";
+
+                if (urlParams.get("error_description"))
+                    document.getElementById("errorDetails").appendChild(document.createTextNode(urlParams.get("error_description")));
+                else
+                    document.getElementById("errorDetails").appendChild(document.createTextNode("Missing security token"));
+            }
+
+            var showError = function (error) {
+                // Handle error
+                document.getElementById("details").style.display = "none";
+                document.getElementById("error").style.display = "";
+
+                if (error)
+                    document.getElementById("errorDetails").appendChild(document.createTextNode(JSON.stringify(error)));
+                else
+                    document.getElementById("errorDetails").appendChild(document.createTextNode("Unknown error retrieving users"));
+            };
+
+            var setAuthorizationValue = function (instance) {
+                postReq(
+                    "https://" + instance + "/api/data/v9.0/serviceendpoints(e0f961df-d9bb-ea11-a812-000d3a0b8c16)",
+                    token,
+                    {
+                        authvalue: "markcarrington.dev"
+                    },
+                    function () {
+                        document.getElementById("details").style.display = "none";
+                        document.getElementById("complete").style.display = "";
+                    },
+                    showError,
+                    "PATCH"
+                );
+            };
+
+            setAuthorizationValue(instance);
+        </script>
+    </main>
+</body>
+</html>

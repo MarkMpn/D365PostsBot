@@ -1,0 +1,100 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta content="width=device-width, initial-scale=1" name="viewport" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📢</text></svg>">
+    <title>D365 Posts Bot - Solution Installation</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.0/css/bootstrap.min.css" integrity="sha384-9aIt2nRpC12Uk9gS9baDl411NQApFmC26EwAOH8WgZl5MYYxFfc+NcPb1dKGj7Sk" crossorigin="anonymous">
+    <style type="text/css">
+        .circle {
+            width: 100px;
+            height: 100px;
+            margin-left: auto;
+            margin-right: auto;
+            border-radius: 50%;
+            background-color: cornflowerblue;
+            line-height: 100px;
+            text-align: center;
+            color: white;
+            font-size: 50px;
+        }
+
+        .line {
+            height: 100px;
+            margin-left: 50%;
+            border-left: 5px solid cornflowerblue;
+            padding-left: 10px;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <main role="main" class="container">
+        <div class="header">
+            <h1 style="text-align: center">📢 D365 Posts Bot</h1>
+            <p style="text-align: center; margin-top: 0; color: gray">by <a href="https://markcarrington.dev">Mark Carrington</a></p>
+        </div>
+
+        <div class="row" style="margin-top: 50px; border-top: solid 1px gray; padding-top: 50px">
+            <div class="col-md-8">
+                <h2>Solution Installation</h2>
+                <p>
+                    To notify the bot that someone has written a new post in D365, install <a href="D365PostsBot_1_0_0_0_managed.zip">this managed solution</a>
+                    to create a webhook that is triggered when any new post or reply is created. It also includes a security role that you will need to assign
+                    to the application user in the next step.
+                </p>
+                <p>
+                    After installing the solution you'll need to set the authentication key on the webhook. You can either do this automatically below,
+                    or manually using the Plugin Registration Tool.
+                </p>
+
+                <h3>Option 1: Automatic</h3>
+
+                <p>
+                    Please enter the URL of your D365 instance below:
+                </p>
+
+                <div class="input-group mb-3">
+                    <div class="input-group-prepend">
+                        <span class="input-group-text" id="basic-addon1">https://</span>
+                    </div>
+                    <input type="text" id="instance" class="form-control" placeholder="contoso.crm.dynamics.com">
+                    <div class="input-group-append">
+                        <button class="btn btn-outline-secondary" type="button" id="setAuthKey">Set Auth Key</button>
+                    </div>
+                </div>
+
+                <h3>Option 2: Manual</h3>
+
+                <ol>
+                    <li>Open the Plugin Registration Tool and connect to your instance</li>
+                    <li>Locate the "D365 Posts Bot" webhook</li>
+                    <li>Click "Update"</li>
+                    <li>Enter the authorization value <code>markcarrington.dev</code></li>
+                    <li>Click Save</li>
+                </ol>
+            </div>
+            <div class="col-md-4">
+                <div class="circle">1</div>
+                <div class="line"><a href="https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=0436a86f-c175-43ad-bb20-9496b6f7d487&response_type=code&redirect_uri=https%3A%2F%2Fbot.markcarrington.dev%2F&response_mode=query&scope=https%3A%2F%2Fgraph.microsoft.com%2F.default">Grant access for the application</a></div>
+                <div class="circle">2</div>
+                <div class="line">Install the <a href="solution.html">managed solution</a></div>
+                <div class="circle">3</div>
+                <div class="line">Authorize the <a href="appuser.html">application user</a></div>
+                <div class="circle">4</div>
+                <div class="line">Install the <a href="teamsapp.html">Teams app</a></div>
+                <div class="circle">fin</div>
+            </div>
+        </div>
+
+        <script type="text/javascript" async>
+            document.getElementById("setAuthKey").addEventListener("click", function () {
+                var instance = document.getElementById("instance").value;
+                var url = "https://login.microsoftonline.com/common/oauth2/authorize?response_type=token&client_id=0436a86f-c175-43ad-bb20-9496b6f7d487&redirect_uri=http%3A%2F%2Flocalhost:3978%2Fsetauthkey.html&scope=https%3A%2F%2Fadmin.services.crm.dynamics.com%2Fuser_impersonation&resource=https://" + instance + "&state=" + instance;
+                window.location.href = url;
+            });
+        </script>
+    </main>
+</body>
+</html>

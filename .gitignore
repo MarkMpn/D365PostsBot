@@ -1,0 +1,13 @@
+*.dll
+*.pdb
+obj/**
+bin/**
+runtimes/**
+*.user
+*.PublishSettings
+publish.cmd
+packages/
+.vs/
+/appsettings.development.json
+*.pubxml
+*.exe
