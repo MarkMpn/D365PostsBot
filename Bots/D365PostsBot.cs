@@ -11,6 +11,7 @@ using Microsoft.Bot.Schema.Teams;
 using Microsoft.Extensions.Configuration;
 using Microsoft.PowerPlatform.Cds.Client;
 using Microsoft.Xrm.Sdk;
+using Microsoft.Xrm.Sdk.Query;
 using Entity = Microsoft.Xrm.Sdk.Entity;
 
 namespace MarkMpn.D365PostsBot.Bots
@@ -74,7 +75,16 @@ namespace MarkMpn.D365PostsBot.Bots
                 {
                     using (var org = new CdsServiceClient(new Uri("https://" + domainName), _config.GetValue<string>("MicrosoftAppId"), _config.GetValue<string>("MicrosoftAppPassword"), true, null))
                     {
-                        // TODO: org.CallerId =
+                        // Find the CDS user details
+                        var userQry = new QueryByAttribute("systemuser") { ColumnSet = new ColumnSet("systemuserid") };
+                        userQry.AddAttributeValue("domainname", username);
+                        var users = org.RetrieveMultiple(userQry);
+
+                        if (users.Entities.Count == 0)
+                            throw new ApplicationException("Could not find your user account in D365");
+
+                        org.CallerId = users.Entities[0].Id;
+
                         var postComment = new Entity("postcomment")
                         {
                             ["postid"] = new EntityReference("post", postId),
