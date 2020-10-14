@@ -45,6 +45,7 @@
                 </p>
 
                 <h3>Manual Installation</h3>
+                <img src="https://markcarrington.dev/wp-content/uploads/2020/10/Bot-Manual-Install.png" style="width: 400px; float: left; margin-right: 2em" />
                 <ol>
                     <li>Go to the <a href="https://admin.teams.microsoft.com" target="_top">Microsoft Teams Admin Center</a></li>
                     <li>Under the "Teams apps" menu, select "Manage apps"</li>
@@ -55,10 +56,16 @@
                     <li>Click "Add"</li>
                 </ol>
 
+                <div style="clear: both; height: 2em"></div>
+
                 <h3>Automatic Installation</h3>
+                <img src="https://markcarrington.dev/wp-content/uploads/2020/10/Bot-Setup-Policy.png" style="width: 400px; float: right; margin-left: 1em" />
                 <ol>
-                    <li>Complete the steps above to do the initial installation for at least one user</li>
-                    <li><a href="https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=0436a86f-c175-43ad-bb20-9496b6f7d487&response_type=token&redirect_uri=https%3A%2F%2Fbot.markcarrington.dev%2Flistusers.html&response_mode=fragment&scope=https%3A%2F%2Fgraph.microsoft.com%2FUser.ReadWrite.All%20https%3A%2F%2Fgraph.microsoft.com%2FAppCatalog.Read.All">Get a list of users to install the app for</a></li>
+                    <li>Complete steps 1 - 4 above to do the initial installation of the app into your organization</li>
+                    <li>In <a href="https://admin.teams.microsoft.com">the Teams admin site</a>, select the <a href="https://admin.teams.microsoft.com/policies/app-setup">Teams Apps &gt; Setup policies</a> menu</li>
+                    <li>Edit the policy that is assigned to the users that you want to deploy the app to (e.g. "Global (Org-wide default)" to deploy it to all users)</li>
+                    <li>In the "Installed apps" section, click "Add apps", then select the "D365 Posts Bot" app</li>
+                    <li>When the policy takes effect (can take several hours) the app will be automatically installed for the users the policy applies to</li>
                 </ol>
             </div>
             <div class="col-md-4">
