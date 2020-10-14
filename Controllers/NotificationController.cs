@@ -80,12 +80,17 @@ namespace MarkMpn.D365PostsBot.Controllers
                     // Get the users to notify
                     var entityRelationships = new Dictionary<Guid, Link>();
                     var usersToNotify = new HashSet<EntityReference>();
+
                     if (postComment != post)
                     {
                         entityRelationships.Add(postComment.Id, new Link { From = post.ToEntityReference(), Description = "Contains Comment" });
                         entityRelationships.Add(post.Id, new Link { From = postComment.ToEntityReference(), Description = "Is Comment On" });
                     }
+
                     entityRelationships.Add(entity.Id, new Link { From = post.ToEntityReference(), Description = "Is Posted On" });
+
+                    if (entity.LogicalName == "systemuser")
+                        usersToNotify.Add(entity.ToEntityReference());
 
                     GetInterestedUsers(post, postComment, entity, org, usersToNotify, entityRelationships);
                     ExpandTeamsToUsers(usersToNotify, org, entityRelationships);
@@ -194,7 +199,7 @@ namespace MarkMpn.D365PostsBot.Controllers
             }
             catch (Exception ex)
             {
-                return base.Content(ex.ToString());
+                return Problem(ex.ToString(), statusCode: 500);
             }
         }
 
