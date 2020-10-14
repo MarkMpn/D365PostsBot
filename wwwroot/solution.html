@@ -91,7 +91,7 @@
         <script type="text/javascript" async>
             document.getElementById("setAuthKey").addEventListener("click", function () {
                 var instance = document.getElementById("instance").value;
-                var url = "https://login.microsoftonline.com/common/oauth2/authorize?response_type=token&client_id=0436a86f-c175-43ad-bb20-9496b6f7d487&redirect_uri=http%3A%2F%2Flocalhost:3978%2Fsetauthkey.html&scope=https%3A%2F%2Fadmin.services.crm.dynamics.com%2Fuser_impersonation&resource=https://" + instance + "&state=" + instance;
+                var url = "https://login.microsoftonline.com/common/oauth2/authorize?response_type=token&client_id=0436a86f-c175-43ad-bb20-9496b6f7d487&redirect_uri=https%3A%2F%2Fbot.markcarrington.dev%2Fsetauthkey.html&scope=https%3A%2F%2Fadmin.services.crm.dynamics.com%2Fuser_impersonation&resource=https://" + instance + "&state=" + instance;
                 window.location.href = url;
             });
         </script>
