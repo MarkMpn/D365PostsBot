@@ -216,9 +216,22 @@ namespace MarkMpn.D365PostsBot.Controllers
                 using (var resp = req.GetResponse())
                 using (var stream = resp.GetResponseStream())
                 {
-                    var bytes = new byte[resp.ContentLength];
-                    stream.Read(bytes, 0, bytes.Length);
-                    return "data:" + resp.ContentType + ";base64," + Convert.ToBase64String(bytes);
+                    var bytes = new List<byte>();
+                    var length = 0;
+
+                    while (true)
+                    {
+                        var buf = new byte[1024];
+                        var read = stream.Read(buf, 0, buf.Length);
+
+                        if (read == 0)
+                            break;
+
+                        bytes.AddRange(buf);
+                        length += read;
+                    }
+
+                    return "data:" + resp.ContentType + ";base64," + Convert.ToBase64String(bytes.ToArray(), 0, length);
                 }
             }
             catch (WebException)
