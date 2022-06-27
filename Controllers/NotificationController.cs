@@ -119,6 +119,9 @@ namespace MarkMpn.D365PostsBot.Controllers
                             var userTeamsDetails = (User)table.Execute(TableOperation.Retrieve<User>(username, "")).Result;
 
                             if (userTeamsDetails == null)
+                                userTeamsDetails = (User)table.Execute(TableOperation.Retrieve<User>(username.ToLowerInvariant(), "")).Result;
+
+                            if (userTeamsDetails == null)
                                 continue;
 
                             MicrosoftAppCredentials.TrustServiceUrl(userTeamsDetails.ServiceUrl);

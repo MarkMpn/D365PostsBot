@@ -45,6 +45,9 @@ namespace MarkMpn.D365PostsBot.Bots
                     var user = (User)table.Execute(TableOperation.Retrieve<User>(username, "")).Result;
 
                     if (user == null)
+                        user = (User)table.Execute(TableOperation.Retrieve<User>(username.ToLowerInvariant(), "")).Result;
+
+                    if (user == null)
                     {
                         await turnContext.SendActivityAsync(MessageFactory.Text("Sorry, I couldn't find your user details. Please remove and re-add the D365 Posts Bot app in Teams and try again"));
                         return;
@@ -126,7 +129,7 @@ namespace MarkMpn.D365PostsBot.Bots
                     if (member.Id != turnContext.Activity.Recipient.Id)
                     {
                         var userId = member.Id;
-                        var username = ((TeamsChannelAccount)member).UserPrincipalName;
+                        var username = ((TeamsChannelAccount)member).UserPrincipalName.ToLowerInvariant();
 
                         // Store details
                         var user = new User(username)
