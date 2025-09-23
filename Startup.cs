@@ -10,6 +10,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using System.Collections.Concurrent;
 using Microsoft.Xrm.Sdk.Metadata;
+using Azure.Core;
+using Azure.Identity;
 
 namespace MarkMpn.D365PostsBot
 {
@@ -53,6 +55,13 @@ namespace MarkMpn.D365PostsBot
 
             // Keep an in-memory metadata cache
             services.AddSingleton(new ConcurrentDictionary<string, ConcurrentDictionary<string, EntityMetadata>>());
+
+            // Use managed identity for authentication
+#if DEBUG
+            services.AddSingleton<TokenCredential, DefaultAzureCredential>();
+#else
+            services.AddSingleton<TokenCredential, ManagedIdentityCredential>();
+#endif
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.

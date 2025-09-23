@@ -8,9 +8,11 @@ using System.Net;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using AdaptiveCards;
+using Azure;
+using Azure.Core;
+using Azure.Data.Tables;
 using MarkMpn.D365PostsBot.Models;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Azure.Cosmos.Table;
 using Microsoft.Bot.Connector;
 using Microsoft.Bot.Connector.Authentication;
 using Microsoft.Bot.Schema;
@@ -18,7 +20,7 @@ using Microsoft.Bot.Schema.Teams;
 using Microsoft.Crm.Sdk.Messages;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Identity.Client;
-using Microsoft.PowerPlatform.Cds.Client;
+using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Messages;
 using Microsoft.Xrm.Sdk.Metadata;
@@ -34,16 +36,21 @@ namespace MarkMpn.D365PostsBot.Controllers
     {
         private readonly IConfiguration _config;
         private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, EntityMetadata>> _metadata;
+        private readonly TokenCredential _credential;
 
         static NotificationController()
         {
 
         }
 
-        public NotificationController(IConfiguration config, ConcurrentDictionary<string, ConcurrentDictionary<string, EntityMetadata>> metadata)
+        public NotificationController(
+            IConfiguration config,
+            ConcurrentDictionary<string, ConcurrentDictionary<string, EntityMetadata>> metadata,
+            TokenCredential credential)
         {
             _config = config;
             _metadata = metadata;
+            _credential = credential;
         }
 
         private string DomainName => Request.Headers["x-ms-dynamics-organization"].Single();
@@ -60,20 +67,20 @@ namespace MarkMpn.D365PostsBot.Controllers
                 // object, so extract out the PrimaryEntityName and PrimaryEntityId properties
                 var postReference = new EntityReference(requestContext.Value<string>("PrimaryEntityName"), new Guid(requestContext.Value<string>("PrimaryEntityId")));
 
-                using (var org = new CdsServiceClient(new Uri("https://" + DomainName), _config.GetValue<string>("MicrosoftAppId"), _config.GetValue<string>("MicrosoftAppPassword"), true, null))
+                using (var org = new ServiceClient(new Uri("https://" + DomainName), _config.GetValue<string>("MicrosoftAppId"), _config.GetValue<string>("MicrosoftAppPassword"), true, null))
                 {
-                    var post = org.Retrieve(postReference.LogicalName, postReference.Id, new ColumnSet(true));
+                    var post = await org.RetrieveAsync(postReference.LogicalName, postReference.Id, new ColumnSet(true));
                     var postComment = post;
 
                     if (postReference.LogicalName == "postcomment")
                     {
                         // This is a comment to an existing post, go and retrieve the original post
-                        post = org.Retrieve("post", postComment.GetAttributeValue<EntityReference>("postid").Id, new ColumnSet(true));
+                        post = await org.RetrieveAsync("post", postComment.GetAttributeValue<EntityReference>("postid").Id, new ColumnSet(true));
                     }
 
                     // Get the entity the post is on
                     var entityRef = post.GetAttributeValue<EntityReference>("regardingobjectid");
-                    var entity = org.Retrieve(entityRef.LogicalName, entityRef.Id, new ColumnSet(true));
+                    var entity = await org.RetrieveAsync(entityRef.LogicalName, entityRef.Id, new ColumnSet(true));
 
                     post = GetFullPostText(org, entityRef, post, ref postComment);
 
@@ -108,18 +115,16 @@ namespace MarkMpn.D365PostsBot.Controllers
 
                         // Connect to storage account so we can look up the details we need to send the message to each user
                         var connectionString = _config.GetConnectionString("Storage");
-                        var storageAccount = CloudStorageAccount.Parse(connectionString);
-                        var tableClient = storageAccount.CreateCloudTableClient();
-                        var table = tableClient.GetTableReference("users");
+                        var table = new TableClient(new Uri(connectionString), "users", _credential);
 
                         foreach (var userRef in usersToNotify)
                         {
-                            var user = org.Retrieve(userRef.LogicalName, userRef.Id, new ColumnSet("domainname"));
+                            var user = await org.RetrieveAsync(userRef.LogicalName, userRef.Id, new ColumnSet("domainname"));
                             var username = user.GetAttributeValue<string>("domainname");
-                            var userTeamsDetails = (User)table.Execute(TableOperation.Retrieve<User>(username, "")).Result;
+                            var userTeamsDetails = (await table.GetEntityAsync<User>(username, "")).Value;
 
                             if (userTeamsDetails == null)
-                                userTeamsDetails = (User)table.Execute(TableOperation.Retrieve<User>(username.ToLowerInvariant(), "")).Result;
+                                userTeamsDetails = (await table.GetEntityAsync<User>(username.ToLowerInvariant(), "")).Value;
 
                             if (userTeamsDetails == null)
                                 continue;
@@ -129,7 +134,7 @@ namespace MarkMpn.D365PostsBot.Controllers
 
                             if (avatarUrl == null)
                             {
-                                var sender = org.Retrieve("systemuser", postComment.GetAttributeValue<EntityReference>("createdby").Id, new ColumnSet("domainname"));
+                                var sender = await org.RetrieveAsync("systemuser", postComment.GetAttributeValue<EntityReference>("createdby").Id, new ColumnSet("domainname"));
                                 avatarUrl = await GetAvatarUrlAsync(userTeamsDetails.TenantId, sender.GetAttributeValue<string>("domainname"), postComment.GetAttributeValue<EntityReference>("createdby").Name);
                             }
 
@@ -183,15 +188,14 @@ namespace MarkMpn.D365PostsBot.Controllers
                                 LastPostId = post.Id,
                                 ETag = userTeamsDetails.ETag
                             };
-                            var update = TableOperation.Merge(updatedUser);
 
                             try
                             {
-                                await table.ExecuteAsync(update);
+                                await table.UpdateEntityAsync(updatedUser, ETag.All);
                             }
-                            catch (StorageException ex)
+                            catch (RequestFailedException ex)
                             {
-                                if (ex.RequestInformation.HttpStatusCode != 412)
+                                if (ex.Status != 412)
                                     throw;
                             }
                         }
