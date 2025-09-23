@@ -15,6 +15,7 @@
     <PackageReference Include="Microsoft.Identity.Client" Version="4.77.0" />
     <PackageReference Include="Microsoft.PowerPlatform.Dataverse.Client" Version="1.2.10" />
     <PackageReference Include="Microsoft.VisualStudio.Web.CodeGeneration.Design" Version="8.0.7" />
+    <PackageReference Include="SkiaSharp" Version="3.119.0" />
   </ItemGroup>
 
   <ItemGroup>

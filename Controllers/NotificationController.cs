@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -26,6 +25,7 @@ using Microsoft.Xrm.Sdk.Messages;
 using Microsoft.Xrm.Sdk.Metadata;
 using Microsoft.Xrm.Sdk.Query;
 using Newtonsoft.Json.Linq;
+using SkiaSharp;
 using Entity = Microsoft.Xrm.Sdk.Entity;
 
 namespace MarkMpn.D365PostsBot.Controllers
@@ -213,8 +213,10 @@ namespace MarkMpn.D365PostsBot.Controllers
         private async Task<string> GetAvatarUrlAsync(string tenantId, string upn, string name)
         {
             var token = await GetApplicationTokenAsync(tenantId);
+            int width = 48;
+            int height = 48;
 
-            var req = WebRequest.CreateHttp($"https://graph.microsoft.com/v1.0/users/{upn}/photos/48x48/$value");
+            var req = WebRequest.CreateHttp($"https://graph.microsoft.com/v1.0/users/{upn}/photos/{width}x{height}/$value");
             req.Headers[HttpRequestHeader.Authorization] = "Bearer " + token;
             req.Headers[HttpRequestHeader.ContentType] = "image/jpg";
 
@@ -243,29 +245,43 @@ namespace MarkMpn.D365PostsBot.Controllers
             }
             catch (WebException)
             {
-                using (var bitmap = new Bitmap(48, 48))
-                using (var g = Graphics.FromImage(bitmap))
+                // SkiaSharp bitmap drawing for Linux compatibility
+                using (var bitmap = new SKBitmap(width, height))
+                using (var canvas = new SKCanvas(bitmap))
                 {
-                    g.FillRectangle(Brushes.Green, 0, 0, 48, 48);
+                    // Fill background with green
+                    canvas.Clear(SKColors.Green);
 
-                    var words = name.Split(' ');
+                    // Extract initials
+                    var words = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                     var text = words[0][0].ToString();
 
                     if (words.Length > 1)
-                        text += words.Last()[0];
+                        text += words[^1][0];
 
                     text = text.ToUpper();
 
-                    using (var font = new Font("Arial", 12, FontStyle.Bold))
+                    // Set up paint for text
+                    using (var paint = new SKPaint())
                     {
-                        var size = g.MeasureString(text, font);
-                        g.DrawString(text, font, Brushes.White, (bitmap.Width - size.Width) / 2, (bitmap.Height - size.Height) / 2);
+                        paint.Color = SKColors.White;
+                        paint.IsAntialias = true;
+
+                        var font = new SKFont(SKTypeface.FromFamilyName(SKTypeface.Default.FamilyName, SKFontStyle.Bold));
+
+                        // Measure text
+                        font.MeasureText(text, out var textBounds, paint);
+
+                        float x = (width - textBounds.Width) / 2 - textBounds.Left;
+                        float y = (height + textBounds.Height) / 2 - textBounds.Bottom;
+
+                        canvas.DrawText(text, x, y, SKTextAlign.Left, font, paint);
                     }
 
-                    using (var stream = new MemoryStream())
+                    // Encode to JPEG and return Base64
+                    using (var data = bitmap.Encode(SKEncodedImageFormat.Jpeg, 100))
                     {
-                        bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Jpeg);
-                        return "data:image/jpeg;base64," + Convert.ToBase64String(stream.ToArray());
+                        return "data:image/jpeg;base64," + Convert.ToBase64String(data.ToArray());
                     }
                 }
             }
