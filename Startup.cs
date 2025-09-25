@@ -60,7 +60,8 @@ namespace MarkMpn.D365PostsBot
 #if DEBUG
             services.AddSingleton<TokenCredential, DefaultAzureCredential>();
 #else
-            services.AddSingleton<TokenCredential, ManagedIdentityCredential>();
+            var clientId = Configuration.GetValue<string>("ManagedIdentityClientId");
+            services.AddSingleton<TokenCredential>(new ManagedIdentityCredential(ManagedIdentityId.FromUserAssignedClientId(clientId)));
 #endif
         }
 
