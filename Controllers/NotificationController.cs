@@ -198,7 +198,7 @@ namespace MarkMpn.D365PostsBot.Controllers
                             await client.Conversations.SendToConversationAsync(response.Id, newActivity);
 
                             // Update the user to record the details of which post should be replied to if the user sends a message back
-                            var updatedUser = new User(username)
+                            var updatedUser = new User(userTeamsDetails.PartitionKey)
                             {
                                 LastDomainName = DomainName,
                                 LastPostId = post.Id,
@@ -209,10 +209,8 @@ namespace MarkMpn.D365PostsBot.Controllers
                             {
                                 await table.UpdateEntityAsync(updatedUser, ETag.All);
                             }
-                            catch (RequestFailedException ex)
+                            catch (RequestFailedException ex) when (ex.Status == 412)
                             {
-                                if (ex.Status != 412)
-                                    throw;
                             }
                         }
                     }
