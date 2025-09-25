@@ -18,6 +18,7 @@ using Microsoft.Bot.Schema;
 using Microsoft.Bot.Schema.Teams;
 using Microsoft.Crm.Sdk.Messages;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Identity.Client;
 using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
@@ -37,6 +38,7 @@ namespace MarkMpn.D365PostsBot.Controllers
         private readonly IConfiguration _config;
         private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, EntityMetadata>> _metadata;
         private readonly TokenCredential _credential;
+        private readonly ILogger<NotificationController> _logger;
 
         static NotificationController()
         {
@@ -46,11 +48,13 @@ namespace MarkMpn.D365PostsBot.Controllers
         public NotificationController(
             IConfiguration config,
             ConcurrentDictionary<string, ConcurrentDictionary<string, EntityMetadata>> metadata,
-            TokenCredential credential)
+            TokenCredential credential,
+            ILogger<NotificationController> logger)
         {
             _config = config;
             _metadata = metadata;
             _credential = credential;
+            _logger = logger;
         }
 
         private string DomainName => Request.Headers["x-ms-dynamics-organization"].Single();
@@ -220,6 +224,7 @@ namespace MarkMpn.D365PostsBot.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Error processing notification");
                 return Problem(ex.ToString(), statusCode: 500);
             }
         }
