@@ -121,10 +121,26 @@ namespace MarkMpn.D365PostsBot.Controllers
                         {
                             var user = await org.RetrieveAsync(userRef.LogicalName, userRef.Id, new ColumnSet("domainname"));
                             var username = user.GetAttributeValue<string>("domainname");
-                            var userTeamsDetails = (await table.GetEntityAsync<User>(username, "")).Value;
+                            Models.User userTeamsDetails = null;
+
+                            try
+                            {
+                                userTeamsDetails = (await table.GetEntityAsync<User>(username, "")).Value;
+                            }
+                            catch (RequestFailedException ex) when (ex.Status == 404)
+                            {
+                            }
 
                             if (userTeamsDetails == null)
-                                userTeamsDetails = (await table.GetEntityAsync<User>(username.ToLowerInvariant(), "")).Value;
+                            {
+                                try
+                                {
+                                    userTeamsDetails = (await table.GetEntityAsync<User>(username.ToLowerInvariant(), "")).Value;
+                                }
+                                catch (RequestFailedException ex) when (ex.Status == 404)
+                                {
+                                }
+                            }
 
                             if (userTeamsDetails == null)
                                 continue;

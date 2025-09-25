@@ -46,10 +46,27 @@ namespace MarkMpn.D365PostsBot.Bots
                 {
                     var connectionString = _config.GetConnectionString("Storage");
                     var table = new TableClient(new Uri(connectionString), "users", _credential);
-                    var user = (await table.GetEntityAsync<User>(username, "", cancellationToken: cancellationToken)).Value;
+
+                    User user = null;
+
+                    try
+                    {
+                        user = (await table.GetEntityAsync<User>(username, "", cancellationToken: cancellationToken)).Value;
+                    }
+                    catch (RequestFailedException ex) when (ex.Status == 404)
+                    {
+                    }
 
                     if (user == null)
-                        user = (await table.GetEntityAsync<User>(username.ToLowerInvariant(), "", cancellationToken: cancellationToken)).Value;
+                    {
+                        try
+                        {
+                            user = (await table.GetEntityAsync<User>(username.ToLowerInvariant(), "", cancellationToken: cancellationToken)).Value;
+                        }
+                        catch (RequestFailedException ex) when (ex.Status == 404)
+                        {
+                        }
+                    }
 
                     if (user == null)
                     {
@@ -148,11 +165,9 @@ namespace MarkMpn.D365PostsBot.Bots
 
                             await turnContext.SendActivityAsync(MessageFactory.Text("Welcome!"), cancellationToken: cancellationToken);
                         }
-                        catch (RequestFailedException ex)
+                        catch (RequestFailedException ex) when (ex.Status == 409)
                         {
                             // Don't throw errors if we've seen this user before
-                            if (ex.Status != 409)
-                                throw;
                         }
                     }
                 }
