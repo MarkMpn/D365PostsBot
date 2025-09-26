@@ -1,12 +1,15 @@
 ﻿using System;
-using Microsoft.Azure.Cosmos.Table;
+using Azure;
+using Azure.Data.Tables;
 
 namespace MarkMpn.D365PostsBot.Models
 {
-    public class User : TableEntity
+    public class User : ITableEntity
     {
-        public User(string username) : base(username, "")
+        public User(string username)
         {
+            PartitionKey = username;
+            RowKey = "";
         }
 
         public User()
@@ -22,5 +25,13 @@ namespace MarkMpn.D365PostsBot.Models
         public string LastDomainName { get; set; }
 
         public Guid? LastPostId { get; set; }
+
+        public string PartitionKey { get; set; }
+
+        public string RowKey { get; set; }
+
+        public DateTimeOffset? Timestamp { get; set; }
+
+        public ETag ETag { get; set; }
     }
 }

@@ -2,14 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Azure;
+using Azure.Core;
+using Azure.Data.Tables;
 using MarkMpn.D365PostsBot.Models;
-using Microsoft.Azure.Cosmos.Table;
 using Microsoft.Bot.Builder;
 using Microsoft.Bot.Builder.Teams;
 using Microsoft.Bot.Schema;
 using Microsoft.Bot.Schema.Teams;
 using Microsoft.Extensions.Configuration;
-using Microsoft.PowerPlatform.Cds.Client;
+using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Query;
 using Entity = Microsoft.Xrm.Sdk.Entity;
@@ -19,10 +21,14 @@ namespace MarkMpn.D365PostsBot.Bots
     public class D365PostsBot : TeamsActivityHandler
     {
         private readonly IConfiguration _config;
+        private readonly TokenCredential _credential;
 
-        public D365PostsBot(IConfiguration config)
+        public D365PostsBot(
+            IConfiguration config,
+            TokenCredential credential)
         {
             _config = config;
+            _credential = credential;
         }
 
         protected override async Task OnMessageActivityAsync(ITurnContext<IMessageActivity> turnContext, CancellationToken cancellationToken)
@@ -39,23 +45,38 @@ namespace MarkMpn.D365PostsBot.Bots
                 if (!String.IsNullOrEmpty(turnContext.Activity.Text))
                 {
                     var connectionString = _config.GetConnectionString("Storage");
-                    var storageAccount = CloudStorageAccount.Parse(connectionString);
-                    var tableClient = storageAccount.CreateCloudTableClient();
-                    var table = tableClient.GetTableReference("users");
-                    var user = (User)table.Execute(TableOperation.Retrieve<User>(username, "")).Result;
+                    var table = new TableClient(new Uri(connectionString), "users", _credential);
 
-                    if (user == null)
-                        user = (User)table.Execute(TableOperation.Retrieve<User>(username.ToLowerInvariant(), "")).Result;
+                    User user = null;
+
+                    try
+                    {
+                        user = (await table.GetEntityAsync<User>(username, "", cancellationToken: cancellationToken)).Value;
+                    }
+                    catch (RequestFailedException ex) when (ex.Status == 404)
+                    {
+                    }
 
                     if (user == null)
                     {
-                        await turnContext.SendActivityAsync(MessageFactory.Text("Sorry, I couldn't find your user details. Please remove and re-add the D365 Posts Bot app in Teams and try again"));
+                        try
+                        {
+                            user = (await table.GetEntityAsync<User>(username.ToLowerInvariant(), "", cancellationToken: cancellationToken)).Value;
+                        }
+                        catch (RequestFailedException ex) when (ex.Status == 404)
+                        {
+                        }
+                    }
+
+                    if (user == null)
+                    {
+                        await turnContext.SendActivityAsync(MessageFactory.Text("Sorry, I couldn't find your user details. Please remove and re-add the D365 Posts Bot app in Teams and try again"), cancellationToken: cancellationToken);
                         return;
                     }
 
                     if (user.LastPostId == null)
                     {
-                        await turnContext.SendActivityAsync(MessageFactory.Text("Sorry, I couldn't find a message to reply to. Please use the Reply button on the post you want to reply to."));
+                        await turnContext.SendActivityAsync(MessageFactory.Text("Sorry, I couldn't find a message to reply to. Please use the Reply button on the post you want to reply to."), cancellationToken: cancellationToken);
                         return;
                     }
 
@@ -72,16 +93,16 @@ namespace MarkMpn.D365PostsBot.Bots
                     domainName = val.DomainName;
                 }
 
-                await turnContext.SendActivityAsync(new Activity { Type = ActivityTypes.Typing });
+                await turnContext.SendActivityAsync(new Activity { Type = ActivityTypes.Typing }, cancellationToken: cancellationToken);
 
                 try
                 {
-                    using (var org = new CdsServiceClient(new Uri("https://" + domainName), _config.GetValue<string>("MicrosoftAppId"), _config.GetValue<string>("MicrosoftAppPassword"), true, null))
+                    using (var org = new ServiceClient(new Uri("https://" + domainName), _config.GetValue<string>("MicrosoftAppId"), _config.GetValue<string>("MicrosoftAppPassword"), true, null))
                     {
-                        // Find the CDS user details
+                        // Find the Dataverse user details
                         var userQry = new QueryByAttribute("systemuser") { ColumnSet = new ColumnSet("systemuserid") };
                         userQry.AddAttributeValue("domainname", username);
-                        var users = org.RetrieveMultiple(userQry);
+                        var users = await org.RetrieveMultipleAsync(userQry);
 
                         if (users.Entities.Count == 0)
                             throw new ApplicationException("Could not find your user account in D365");
@@ -94,19 +115,19 @@ namespace MarkMpn.D365PostsBot.Bots
                             ["text"] = message
                         };
 
-                        org.Create(postComment);
+                        await org.CreateAsync(postComment);
                     }
 
-                    await turnContext.SendActivityAsync(MessageFactory.Text("Your reply has been sent"));
+                    await turnContext.SendActivityAsync(MessageFactory.Text("Your reply has been sent"), cancellationToken: cancellationToken);
                 }
                 catch (Exception ex)
                 {
-                    await turnContext.SendActivityAsync(MessageFactory.Text("There was an error sending your reply back to D365: " + ex.Message));
+                    await turnContext.SendActivityAsync(MessageFactory.Text("There was an error sending your reply back to D365: " + ex.Message), cancellationToken: cancellationToken);
                 }
             }
             catch (Exception ex)
             {
-                await turnContext.SendActivityAsync(MessageFactory.Text(ex.ToString()));
+                await turnContext.SendActivityAsync(MessageFactory.Text(ex.ToString()), cancellationToken: cancellationToken);
             }
         }
 
@@ -119,10 +140,8 @@ namespace MarkMpn.D365PostsBot.Bots
                 var serviceUrl = turnContext.Activity.ServiceUrl;
 
                 var connectionString = _config.GetConnectionString("Storage");
-                var storageAccount = CloudStorageAccount.Parse(connectionString);
-                var tableClient = storageAccount.CreateCloudTableClient();
-                var table = tableClient.GetTableReference("users");
-                table.CreateIfNotExists();
+                var table = new TableClient(new Uri(connectionString), "users", _credential);
+                await table.CreateIfNotExistsAsync();
 
                 foreach (var member in membersAdded)
                 {
@@ -139,26 +158,23 @@ namespace MarkMpn.D365PostsBot.Bots
                             ServiceUrl = serviceUrl
                         };
 
-                        var insert = TableOperation.Insert(user);
 
                         try
                         {
-                            await table.ExecuteAsync(insert);
+                            await table.AddEntityAsync(user, cancellationToken);
 
-                            await turnContext.SendActivityAsync(MessageFactory.Text("Welcome!"));
+                            await turnContext.SendActivityAsync(MessageFactory.Text("Welcome!"), cancellationToken: cancellationToken);
                         }
-                        catch (StorageException ex)
+                        catch (RequestFailedException ex) when (ex.Status == 409)
                         {
                             // Don't throw errors if we've seen this user before
-                            if (ex.RequestInformation.HttpStatusCode != 409)
-                                throw;
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                await turnContext.SendActivityAsync(MessageFactory.Text("Error: " + ex.ToString()));
+                await turnContext.SendActivityAsync(MessageFactory.Text("Error: " + ex.ToString()), cancellationToken: cancellationToken);
             }
         }
     }

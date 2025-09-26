@@ -1,29 +1,33 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Net;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using AdaptiveCards;
+using Azure;
+using Azure.Core;
+using Azure.Data.Tables;
 using MarkMpn.D365PostsBot.Models;
+using Microsoft.ApplicationInsights;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Azure.Cosmos.Table;
 using Microsoft.Bot.Connector;
 using Microsoft.Bot.Connector.Authentication;
 using Microsoft.Bot.Schema;
 using Microsoft.Bot.Schema.Teams;
 using Microsoft.Crm.Sdk.Messages;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Microsoft.Identity.Client;
-using Microsoft.PowerPlatform.Cds.Client;
+using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Messages;
 using Microsoft.Xrm.Sdk.Metadata;
 using Microsoft.Xrm.Sdk.Query;
 using Newtonsoft.Json.Linq;
+using SkiaSharp;
 using Entity = Microsoft.Xrm.Sdk.Entity;
 
 namespace MarkMpn.D365PostsBot.Controllers
@@ -34,16 +38,27 @@ namespace MarkMpn.D365PostsBot.Controllers
     {
         private readonly IConfiguration _config;
         private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, EntityMetadata>> _metadata;
+        private readonly TokenCredential _credential;
+        private readonly ILogger<NotificationController> _logger;
+        private readonly TelemetryClient _telemetryClient;
 
         static NotificationController()
         {
 
         }
 
-        public NotificationController(IConfiguration config, ConcurrentDictionary<string, ConcurrentDictionary<string, EntityMetadata>> metadata)
+        public NotificationController(
+            IConfiguration config,
+            ConcurrentDictionary<string, ConcurrentDictionary<string, EntityMetadata>> metadata,
+            TokenCredential credential,
+            ILogger<NotificationController> logger,
+            TelemetryClient telemetryClient)
         {
             _config = config;
             _metadata = metadata;
+            _credential = credential;
+            _logger = logger;
+            _telemetryClient = telemetryClient;
         }
 
         private string DomainName => Request.Headers["x-ms-dynamics-organization"].Single();
@@ -60,20 +75,20 @@ namespace MarkMpn.D365PostsBot.Controllers
                 // object, so extract out the PrimaryEntityName and PrimaryEntityId properties
                 var postReference = new EntityReference(requestContext.Value<string>("PrimaryEntityName"), new Guid(requestContext.Value<string>("PrimaryEntityId")));
 
-                using (var org = new CdsServiceClient(new Uri("https://" + DomainName), _config.GetValue<string>("MicrosoftAppId"), _config.GetValue<string>("MicrosoftAppPassword"), true, null))
+                using (var org = new ServiceClient(new Uri("https://" + DomainName), _config.GetValue<string>("MicrosoftAppId"), _config.GetValue<string>("MicrosoftAppPassword"), true, null))
                 {
-                    var post = org.Retrieve(postReference.LogicalName, postReference.Id, new ColumnSet(true));
+                    var post = await org.RetrieveAsync(postReference.LogicalName, postReference.Id, new ColumnSet(true));
                     var postComment = post;
 
                     if (postReference.LogicalName == "postcomment")
                     {
                         // This is a comment to an existing post, go and retrieve the original post
-                        post = org.Retrieve("post", postComment.GetAttributeValue<EntityReference>("postid").Id, new ColumnSet(true));
+                        post = await org.RetrieveAsync("post", postComment.GetAttributeValue<EntityReference>("postid").Id, new ColumnSet(true));
                     }
 
                     // Get the entity the post is on
                     var entityRef = post.GetAttributeValue<EntityReference>("regardingobjectid");
-                    var entity = org.Retrieve(entityRef.LogicalName, entityRef.Id, new ColumnSet(true));
+                    var entity = await org.RetrieveAsync(entityRef.LogicalName, entityRef.Id, new ColumnSet(true));
 
                     post = GetFullPostText(org, entityRef, post, ref postComment);
 
@@ -108,18 +123,32 @@ namespace MarkMpn.D365PostsBot.Controllers
 
                         // Connect to storage account so we can look up the details we need to send the message to each user
                         var connectionString = _config.GetConnectionString("Storage");
-                        var storageAccount = CloudStorageAccount.Parse(connectionString);
-                        var tableClient = storageAccount.CreateCloudTableClient();
-                        var table = tableClient.GetTableReference("users");
+                        var table = new TableClient(new Uri(connectionString), "users", _credential);
 
                         foreach (var userRef in usersToNotify)
                         {
-                            var user = org.Retrieve(userRef.LogicalName, userRef.Id, new ColumnSet("domainname"));
+                            var user = await org.RetrieveAsync(userRef.LogicalName, userRef.Id, new ColumnSet("domainname"));
                             var username = user.GetAttributeValue<string>("domainname");
-                            var userTeamsDetails = (User)table.Execute(TableOperation.Retrieve<User>(username, "")).Result;
+                            Models.User userTeamsDetails = null;
+
+                            try
+                            {
+                                userTeamsDetails = (await table.GetEntityAsync<User>(username, "")).Value;
+                            }
+                            catch (RequestFailedException ex) when (ex.Status == 404)
+                            {
+                            }
 
                             if (userTeamsDetails == null)
-                                userTeamsDetails = (User)table.Execute(TableOperation.Retrieve<User>(username.ToLowerInvariant(), "")).Result;
+                            {
+                                try
+                                {
+                                    userTeamsDetails = (await table.GetEntityAsync<User>(username.ToLowerInvariant(), "")).Value;
+                                }
+                                catch (RequestFailedException ex) when (ex.Status == 404)
+                                {
+                                }
+                            }
 
                             if (userTeamsDetails == null)
                                 continue;
@@ -129,7 +158,7 @@ namespace MarkMpn.D365PostsBot.Controllers
 
                             if (avatarUrl == null)
                             {
-                                var sender = org.Retrieve("systemuser", postComment.GetAttributeValue<EntityReference>("createdby").Id, new ColumnSet("domainname"));
+                                var sender = await org.RetrieveAsync("systemuser", postComment.GetAttributeValue<EntityReference>("createdby").Id, new ColumnSet("domainname"));
                                 avatarUrl = await GetAvatarUrlAsync(userTeamsDetails.TenantId, sender.GetAttributeValue<string>("domainname"), postComment.GetAttributeValue<EntityReference>("createdby").Name);
                             }
 
@@ -177,23 +206,28 @@ namespace MarkMpn.D365PostsBot.Controllers
                             await client.Conversations.SendToConversationAsync(response.Id, newActivity);
 
                             // Update the user to record the details of which post should be replied to if the user sends a message back
-                            var updatedUser = new User(username)
+                            var updatedUser = new User(userTeamsDetails.PartitionKey)
                             {
                                 LastDomainName = DomainName,
                                 LastPostId = post.Id,
                                 ETag = userTeamsDetails.ETag
                             };
-                            var update = TableOperation.Merge(updatedUser);
 
                             try
                             {
-                                await table.ExecuteAsync(update);
+                                await table.UpdateEntityAsync(updatedUser, ETag.All);
                             }
-                            catch (StorageException ex)
+                            catch (RequestFailedException ex) when (ex.Status == 412)
                             {
-                                if (ex.RequestInformation.HttpStatusCode != 412)
-                                    throw;
                             }
+
+                            _telemetryClient.TrackEvent("NotificationSent", new Dictionary<string, string>
+                            {
+                                { "DomainName", DomainName },
+                                { "PostId", post.Id.ToString() },
+                                { "UserId", userRef.Id.ToString() },
+                                { "Username", username }
+                            });
                         }
                     }
                 }
@@ -202,6 +236,7 @@ namespace MarkMpn.D365PostsBot.Controllers
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Error processing notification");
                 return Problem(ex.ToString(), statusCode: 500);
             }
         }
@@ -209,8 +244,10 @@ namespace MarkMpn.D365PostsBot.Controllers
         private async Task<string> GetAvatarUrlAsync(string tenantId, string upn, string name)
         {
             var token = await GetApplicationTokenAsync(tenantId);
+            int width = 48;
+            int height = 48;
 
-            var req = WebRequest.CreateHttp($"https://graph.microsoft.com/v1.0/users/{upn}/photos/48x48/$value");
+            var req = WebRequest.CreateHttp($"https://graph.microsoft.com/v1.0/users/{upn}/photos/{width}x{height}/$value");
             req.Headers[HttpRequestHeader.Authorization] = "Bearer " + token;
             req.Headers[HttpRequestHeader.ContentType] = "image/jpg";
 
@@ -239,29 +276,43 @@ namespace MarkMpn.D365PostsBot.Controllers
             }
             catch (WebException)
             {
-                using (var bitmap = new Bitmap(48, 48))
-                using (var g = Graphics.FromImage(bitmap))
+                // SkiaSharp bitmap drawing for Linux compatibility
+                using (var bitmap = new SKBitmap(width, height))
+                using (var canvas = new SKCanvas(bitmap))
                 {
-                    g.FillRectangle(Brushes.Green, 0, 0, 48, 48);
+                    // Fill background with green
+                    canvas.Clear(SKColors.Green);
 
-                    var words = name.Split(' ');
+                    // Extract initials
+                    var words = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
                     var text = words[0][0].ToString();
 
                     if (words.Length > 1)
-                        text += words.Last()[0];
+                        text += words[^1][0];
 
                     text = text.ToUpper();
 
-                    using (var font = new Font("Arial", 12, FontStyle.Bold))
+                    // Set up paint for text
+                    using (var paint = new SKPaint())
                     {
-                        var size = g.MeasureString(text, font);
-                        g.DrawString(text, font, Brushes.White, (bitmap.Width - size.Width) / 2, (bitmap.Height - size.Height) / 2);
+                        paint.Color = SKColors.White;
+                        paint.IsAntialias = true;
+
+                        var font = new SKFont(SKTypeface.FromFamilyName(SKTypeface.Default.FamilyName, SKFontStyle.Bold));
+
+                        // Measure text
+                        font.MeasureText(text, out var textBounds, paint);
+
+                        float x = (width - textBounds.Width) / 2 - textBounds.Left;
+                        float y = (height + textBounds.Height) / 2 - textBounds.Bottom;
+
+                        canvas.DrawText(text, x, y, SKTextAlign.Left, font, paint);
                     }
 
-                    using (var stream = new MemoryStream())
+                    // Encode to JPEG and return Base64
+                    using (var data = bitmap.Encode(SKEncodedImageFormat.Jpeg, 100))
                     {
-                        bitmap.Save(stream, System.Drawing.Imaging.ImageFormat.Jpeg);
-                        return "data:image/jpeg;base64," + Convert.ToBase64String(stream.ToArray());
+                        return "data:image/jpeg;base64," + Convert.ToBase64String(data.ToArray());
                     }
                 }
             }
