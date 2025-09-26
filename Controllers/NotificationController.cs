@@ -117,6 +117,9 @@ namespace MarkMpn.D365PostsBot.Controllers
                     // Remove any possible null value
                     usersToNotify.Remove(null);
 
+                    // Remove any teams - we can only send notifications to individual users
+                    usersToNotify.RemoveWhere(u => u.LogicalName != "systemuser");
+
                     if (usersToNotify.Any())
                     {
                         string avatarUrl = null;
