@@ -11,6 +11,7 @@ using Azure;
 using Azure.Core;
 using Azure.Data.Tables;
 using MarkMpn.D365PostsBot.Models;
+using Microsoft.ApplicationInsights;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Bot.Connector;
 using Microsoft.Bot.Connector.Authentication;
@@ -39,6 +40,7 @@ namespace MarkMpn.D365PostsBot.Controllers
         private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, EntityMetadata>> _metadata;
         private readonly TokenCredential _credential;
         private readonly ILogger<NotificationController> _logger;
+        private readonly TelemetryClient _telemetryClient;
 
         static NotificationController()
         {
@@ -49,12 +51,14 @@ namespace MarkMpn.D365PostsBot.Controllers
             IConfiguration config,
             ConcurrentDictionary<string, ConcurrentDictionary<string, EntityMetadata>> metadata,
             TokenCredential credential,
-            ILogger<NotificationController> logger)
+            ILogger<NotificationController> logger,
+            TelemetryClient telemetryClient)
         {
             _config = config;
             _metadata = metadata;
             _credential = credential;
             _logger = logger;
+            _telemetryClient = telemetryClient;
         }
 
         private string DomainName => Request.Headers["x-ms-dynamics-organization"].Single();
@@ -216,6 +220,14 @@ namespace MarkMpn.D365PostsBot.Controllers
                             catch (RequestFailedException ex) when (ex.Status == 412)
                             {
                             }
+
+                            _telemetryClient.TrackEvent("NotificationSent", new Dictionary<string, string>
+                            {
+                                { "DomainName", DomainName },
+                                { "PostId", post.Id.ToString() },
+                                { "UserId", userRef.Id.ToString() },
+                                { "Username", username }
+                            });
                         }
                     }
                 }
