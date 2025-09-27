@@ -25,6 +25,7 @@ using Microsoft.PowerPlatform.Dataverse.Client;
 using Microsoft.Xrm.Sdk;
 using Microsoft.Xrm.Sdk.Messages;
 using Microsoft.Xrm.Sdk.Metadata;
+using Microsoft.Xrm.Sdk.Metadata.Query;
 using Microsoft.Xrm.Sdk.Query;
 using Newtonsoft.Json.Linq;
 using SkiaSharp;
@@ -549,13 +550,45 @@ namespace MarkMpn.D365PostsBot.Controllers
             {
                 // Other record
                 // Get the logical name from the type code
-                // TODO: Make this more efficient with a cache and using RetrieveMetadataChangesRequest with appropriate filter
-                _logger.LogTrace("Retrieving metadata for type code {Etc}", etc);
+                var metadataForDomain = _metadata.GetOrAdd(domainName, _ => new ConcurrentDictionary<string, EntityMetadata>());
+                var metadata = metadataForDomain.Values.SingleOrDefault(e => e.ObjectTypeCode == etc);
 
-                var metadataReq = new RetrieveAllEntitiesRequest();
-                metadataReq.EntityFilters = EntityFilters.Entity;
-                var metadataResp = (RetrieveAllEntitiesResponse)org.Execute(metadataReq);
-                var metadata = metadataResp.EntityMetadata.SingleOrDefault(e => e.ObjectTypeCode == etc);
+                if (metadata == null)
+                {
+                    _logger.LogTrace("Retrieving metadata for type code {Etc}", etc);
+
+                    // Retrieve all properties for consistency with GetEntityMetadata method
+                    var metadataReq = new RetrieveMetadataChangesRequest
+                    {
+                        Query = new EntityQueryExpression
+                        {
+                            Criteria = new MetadataFilterExpression
+                            {
+                                Conditions =
+                                {
+                                    new MetadataConditionExpression(nameof(EntityMetadata.ObjectTypeCode), MetadataConditionOperator.Equals, etc)
+                                }
+                            },
+                            Properties = new MetadataPropertiesExpression
+                            {
+                                AllProperties = true
+                            },
+                            AttributeQuery = new AttributeQueryExpression
+                            {
+                                Properties = new MetadataPropertiesExpression
+                                {
+                                    AllProperties = true
+                                }
+                            }
+                        },
+                        ClientVersionStamp = null
+                    };
+                    var metadataResp = (RetrieveMetadataChangesResponse)org.Execute(metadataReq);
+                    metadata = metadataResp.EntityMetadata.SingleOrDefault(e => e.ObjectTypeCode == etc);
+
+                    if (metadata != null)
+                        metadataForDomain.TryAdd(metadata.LogicalName, metadata);
+                }
 
                 if (metadata != null)
                 {
