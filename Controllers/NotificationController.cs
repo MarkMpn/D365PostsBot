@@ -77,17 +77,22 @@ namespace MarkMpn.D365PostsBot.Controllers
 
                 using (var org = new ServiceClient(new Uri("https://" + DomainName), _config.GetValue<string>("MicrosoftAppId"), _config.GetValue<string>("MicrosoftAppPassword"), true, null))
                 {
+                    _logger.LogTrace("Retrieving {Entity}", postReference.LogicalName);
+
                     var post = await org.RetrieveAsync(postReference.LogicalName, postReference.Id, new ColumnSet(true));
                     var postComment = post;
 
                     if (postReference.LogicalName == "postcomment")
                     {
+                        _logger.LogTrace("Retrieving related post");
+
                         // This is a comment to an existing post, go and retrieve the original post
                         post = await org.RetrieveAsync("post", postComment.GetAttributeValue<EntityReference>("postid").Id, new ColumnSet(true));
                     }
 
                     // Get the entity the post is on
                     var entityRef = post.GetAttributeValue<EntityReference>("regardingobjectid");
+                    _logger.LogTrace("Retrieving regarding {Entity}", entityRef.LogicalName);
                     var entity = await org.RetrieveAsync(entityRef.LogicalName, entityRef.Id, new ColumnSet(true));
 
                     post = GetFullPostText(org, entityRef, post, ref postComment);
@@ -343,6 +348,7 @@ namespace MarkMpn.D365PostsBot.Controllers
                     continue;
 
                 var nameAttr = GetEntityMetadata(org, link.From.LogicalName).PrimaryNameAttribute;
+                _logger.LogTrace("Retrieving name for {Entity} {Id}", link.From.LogicalName, link.From.Id);
                 var entity = org.Retrieve(link.From.LogicalName, link.From.Id, new ColumnSet(nameAttr));
                 link.From.Name = entity.GetAttributeValue<string>(nameAttr);
             }
@@ -353,6 +359,7 @@ namespace MarkMpn.D365PostsBot.Controllers
             var instanceCache = _metadata.GetOrAdd(DomainName, _ => new ConcurrentDictionary<string, EntityMetadata>());
             return instanceCache.GetOrAdd(logicalName, ln =>
             {
+                _logger.LogTrace("Retrieving metadata for {Entity}", ln);
                 var req = new RetrieveEntityRequest
                 {
                     LogicalName = ln,
@@ -381,7 +388,7 @@ namespace MarkMpn.D365PostsBot.Controllers
                 GetChain(chain, from, link.From.Id, entityRelationships);
         }
 
-        private static Entity GetFullPostText(IOrganizationService org, EntityReference entityRef, Entity post,
+        private Entity GetFullPostText(IOrganizationService org, EntityReference entityRef, Entity post,
             ref Entity postComment)
         {
             // Retrieve the full wall for this record to expand out any standard posts
@@ -389,6 +396,8 @@ namespace MarkMpn.D365PostsBot.Controllers
 
             while (true)
             {
+                _logger.LogTrace("Retrieving wall page {Page}", wallPage);
+
                 var wall = (RetrieveRecordWallResponse)org.Execute(new RetrieveRecordWallRequest
                 {
                     Entity = entityRef,
@@ -445,6 +454,7 @@ namespace MarkMpn.D365PostsBot.Controllers
         {
             foreach (var user in usersToNotify.ToList())
             {
+                _logger.LogTrace("Retrieving follows for user {UserId}", user.Id);
                 var followsQry = new QueryByAttribute("postfollow");
                 followsQry.AddAttributeValue("regardingobjectid", user.Id);
                 followsQry.ColumnSet = new ColumnSet("ownerid");
@@ -465,6 +475,7 @@ namespace MarkMpn.D365PostsBot.Controllers
         {
             foreach (var team in usersToNotify.Where(usr => usr.LogicalName == "team").ToList())
             {
+                _logger.LogTrace("Expanding team {TeamId} to users", team.Id);
                 var usersQry = new QueryByAttribute("connection");
                 usersQry.AddAttributeValue("record1id", team.Id);
                 usersQry.AddAttributeValue("record1roleid", new Guid("8F443BC5-19E3-E611-80C8-00155D007101"));
@@ -501,6 +512,7 @@ namespace MarkMpn.D365PostsBot.Controllers
                 entityRelationships.Add(createdBy.Id, new Link { From = post.ToEntityReference(), Description = "Posted By" });
 
             // Add any user who has also replied to this same post
+            _logger.LogTrace("Retrieving other replies to post {PostId}", post.Id);
             var replyQry = new QueryByAttribute("postcomment");
             replyQry.AddAttributeValue("postid", post.Id);
             replyQry.ColumnSet = new ColumnSet("createdby");
@@ -540,6 +552,8 @@ namespace MarkMpn.D365PostsBot.Controllers
                 // Other record
                 // Get the logical name from the type code
                 // TODO: Make this more efficient with a cache and using RetrieveMetadataChangesRequest with appropriate filter
+                _logger.LogTrace("Retrieving metadata for type code {Etc}", etc);
+
                 var metadataReq = new RetrieveAllEntitiesRequest();
                 metadataReq.EntityFilters = EntityFilters.Entity;
                 var metadataResp = (RetrieveAllEntitiesResponse)org.Execute(metadataReq);
@@ -547,6 +561,8 @@ namespace MarkMpn.D365PostsBot.Controllers
 
                 if (metadata != null)
                 {
+                    _logger.LogTrace("Retrieving mentioned {Entity} {Id}", metadata.LogicalName, id);
+
                     var entity = org.Retrieve(metadata.LogicalName, id, new ColumnSet(true));
 
                     if (!entityRelationships.ContainsKey(id))
@@ -580,6 +596,8 @@ namespace MarkMpn.D365PostsBot.Controllers
             }
 
             // Add any user who follows the parent record.
+            _logger.LogTrace("Retrieving follows for {Entity} {Id}", entity.LogicalName, entity.Id);
+
             var entityFollowsQry = new QueryByAttribute("postfollow");
             entityFollowsQry.AddAttributeValue("regardingobjectid", entity.Id);
             entityFollowsQry.ColumnSet = new ColumnSet("ownerid");
@@ -610,6 +628,7 @@ namespace MarkMpn.D365PostsBot.Controllers
 
             foreach (var accountId in accountIds)
             {
+                _logger.LogTrace("Retrieving account {AccountId}", accountId);
                 var account = org.Retrieve("account", accountId, new ColumnSet("ownerid"));
 
                 // Recurse into the account
