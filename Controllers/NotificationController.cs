@@ -61,10 +61,8 @@ namespace MarkMpn.D365PostsBot.Controllers
             _telemetryClient = telemetryClient;
         }
 
-        private string DomainName => Request.Headers["x-ms-dynamics-organization"].Single();
-
         [HttpPost]
-        public async Task<IActionResult> PostAsync([FromQuery] string code, [FromBody] JObject requestContext)
+        public async Task<IActionResult> PostAsync([FromQuery] string code, [FromBody] JObject requestContext, [FromHeader(Name = "x-ms-dynamics-organization")] string domainName)
         {
             if (code != _config.GetValue<string>("WebhookKey"))
                 return Unauthorized();
@@ -75,7 +73,7 @@ namespace MarkMpn.D365PostsBot.Controllers
                 // object, so extract out the PrimaryEntityName and PrimaryEntityId properties
                 var postReference = new EntityReference(requestContext.Value<string>("PrimaryEntityName"), new Guid(requestContext.Value<string>("PrimaryEntityId")));
 
-                using (var org = new ServiceClient(new Uri("https://" + DomainName), _config.GetValue<string>("MicrosoftAppId"), _config.GetValue<string>("MicrosoftAppPassword"), true, null))
+                using (var org = new ServiceClient(new Uri("https://" + domainName), _config.GetValue<string>("MicrosoftAppId"), _config.GetValue<string>("MicrosoftAppPassword"), true, null))
                 {
                     _logger.LogTrace("Retrieving {Entity}", postReference.LogicalName);
 
@@ -112,7 +110,7 @@ namespace MarkMpn.D365PostsBot.Controllers
                     if (entity.LogicalName == "systemuser")
                         usersToNotify.Add(entity.ToEntityReference());
 
-                    GetInterestedUsers(post, postComment, entity, org, usersToNotify, entityRelationships);
+                    GetInterestedUsers(post, postComment, entity, domainName, org, usersToNotify, entityRelationships);
                     ExpandTeamsToUsers(usersToNotify, org, entityRelationships);
                     AddUserFollows(usersToNotify, org, entityRelationships);
 
@@ -192,7 +190,7 @@ namespace MarkMpn.D365PostsBot.Controllers
                                 Links = GetChain(postComment.Id, userRef.Id, entityRelationships)
                             };
 
-                            EnsureChainDetails(org, model.Links);
+                            EnsureChainDetails(domainName, org, model.Links);
 
                             var newActivity = new Activity
                             {
@@ -204,7 +202,7 @@ namespace MarkMpn.D365PostsBot.Controllers
                                 },
                                 Attachments = new List<Attachment>
                                 {
-                                    ToAdaptiveCard(model, avatarUrl)
+                                    ToAdaptiveCard(domainName, model, avatarUrl)
                                 }
                             };
 
@@ -216,7 +214,7 @@ namespace MarkMpn.D365PostsBot.Controllers
                             // Update the user to record the details of which post should be replied to if the user sends a message back
                             var updatedUser = new User(userTeamsDetails.PartitionKey)
                             {
-                                LastDomainName = DomainName,
+                                LastDomainName = domainName,
                                 LastPostId = post.Id,
                                 ETag = userTeamsDetails.ETag
                             };
@@ -231,7 +229,7 @@ namespace MarkMpn.D365PostsBot.Controllers
 
                             _telemetryClient.TrackEvent("NotificationSent", new Dictionary<string, string>
                             {
-                                { "DomainName", DomainName },
+                                { "DomainName", domainName },
                                 { "PostId", post.Id.ToString() },
                                 { "UserId", userRef.Id.ToString() },
                                 { "Username", username }
@@ -338,7 +336,7 @@ namespace MarkMpn.D365PostsBot.Controllers
             return result.AccessToken;
         }
 
-        private void EnsureChainDetails(IOrganizationService org, Link[] links)
+        private void EnsureChainDetails(string domainName, IOrganizationService org, Link[] links)
         {
             foreach (var link in links)
             {
@@ -347,16 +345,16 @@ namespace MarkMpn.D365PostsBot.Controllers
                     link.From.LogicalName == "postcomment")
                     continue;
 
-                var nameAttr = GetEntityMetadata(org, link.From.LogicalName).PrimaryNameAttribute;
+                var nameAttr = GetEntityMetadata(domainName, org, link.From.LogicalName).PrimaryNameAttribute;
                 _logger.LogTrace("Retrieving name for {Entity} {Id}", link.From.LogicalName, link.From.Id);
                 var entity = org.Retrieve(link.From.LogicalName, link.From.Id, new ColumnSet(nameAttr));
                 link.From.Name = entity.GetAttributeValue<string>(nameAttr);
             }
         }
 
-        private EntityMetadata GetEntityMetadata(IOrganizationService org, string logicalName)
+        private EntityMetadata GetEntityMetadata(string domainName, IOrganizationService org, string logicalName)
         {
-            var instanceCache = _metadata.GetOrAdd(DomainName, _ => new ConcurrentDictionary<string, EntityMetadata>());
+            var instanceCache = _metadata.GetOrAdd(domainName, _ => new ConcurrentDictionary<string, EntityMetadata>());
             return instanceCache.GetOrAdd(logicalName, ln =>
             {
                 _logger.LogTrace("Retrieving metadata for {Entity}", ln);
@@ -491,7 +489,7 @@ namespace MarkMpn.D365PostsBot.Controllers
             }
         }
 
-        private void GetInterestedUsers(Entity post, Entity comment, Entity entity, IOrganizationService org, HashSet<EntityReference> userIds, Dictionary<Guid, Link> entityRelationships)
+        private void GetInterestedUsers(Entity post, Entity comment, Entity entity, string domainName, IOrganizationService org, HashSet<EntityReference> userIds, Dictionary<Guid, Link> entityRelationships)
         {
             var processedEntities = new HashSet<Guid>();
 
@@ -499,7 +497,7 @@ namespace MarkMpn.D365PostsBot.Controllers
             var userRegex = new Regex(@"@\[(?<etc>[0-9]+),(?<id>[a-z0-9-]+),", RegexOptions.IgnoreCase);
 
             foreach (Match user in userRegex.Matches(comment.GetAttributeValue<string>("text")))
-                FollowMention(Int32.Parse(user.Groups["etc"].Value), new Guid(user.Groups["id"].Value), org, processedEntities, new Link { From = comment.ToEntityReference(), Description = "Mentions" }, userIds, entityRelationships);
+                FollowMention(Int32.Parse(user.Groups["etc"].Value), new Guid(user.Groups["id"].Value), domainName, org, processedEntities, new Link { From = comment.ToEntityReference(), Description = "Mentions" }, userIds, entityRelationships);
 
             // Get the user who posted the comment
             var createdBy = comment.GetAttributeValue<EntityReference>("createdby");
@@ -525,10 +523,10 @@ namespace MarkMpn.D365PostsBot.Controllers
             }
 
             // Get anyone otherwise interested in the record being posted on
-            GetInterestedUsers(entity, org, processedEntities, userIds, entityRelationships);
+            GetInterestedUsers(entity, domainName, org, processedEntities, userIds, entityRelationships);
         }
 
-        private void FollowMention(int etc, Guid id, IOrganizationService org, HashSet<Guid> processedEntities, Link relationship, HashSet<EntityReference> userIds, Dictionary<Guid, Link> entityRelationships)
+        private void FollowMention(int etc, Guid id, string domainName, IOrganizationService org, HashSet<Guid> processedEntities, Link relationship, HashSet<EntityReference> userIds, Dictionary<Guid, Link> entityRelationships)
         {
             if (processedEntities.Contains(id))
                 return;
@@ -568,12 +566,12 @@ namespace MarkMpn.D365PostsBot.Controllers
                     if (!entityRelationships.ContainsKey(id))
                         entityRelationships.Add(id, relationship);
 
-                    GetInterestedUsers(entity, org, processedEntities, userIds, entityRelationships);
+                    GetInterestedUsers(entity, domainName, org, processedEntities, userIds, entityRelationships);
                 }
             }
         }
 
-        private void GetInterestedUsers(Entity entity, IOrganizationService org, HashSet<Guid> processedEntities, HashSet<EntityReference> userIds, Dictionary<Guid, Link> entityRelationships)
+        private void GetInterestedUsers(Entity entity, string domainName, IOrganizationService org, HashSet<Guid> processedEntities, HashSet<EntityReference> userIds, Dictionary<Guid, Link> entityRelationships)
         {
             if (!processedEntities.Add(entity.Id))
                 return;
@@ -591,7 +589,7 @@ namespace MarkMpn.D365PostsBot.Controllers
                 if (userRef != null && (userRef.LogicalName == "systemuser" || userRef.LogicalName == "team"))
                 {
                     if (userIds.Add(userRef))
-                        entityRelationships.Add(userRef.Id, new Link { From = entity.ToEntityReference(), Description = GetEntityMetadata(org, entity.LogicalName).Attributes.Single(a => a.LogicalName == attribute.Key).DisplayName.UserLocalizedLabel.Label });
+                        entityRelationships.Add(userRef.Id, new Link { From = entity.ToEntityReference(), Description = GetEntityMetadata(domainName, org, entity.LogicalName).Attributes.Single(a => a.LogicalName == attribute.Key).DisplayName.UserLocalizedLabel.Label });
                 }
             }
 
@@ -622,7 +620,7 @@ namespace MarkMpn.D365PostsBot.Controllers
                     accountIds.Add(accountRef.Id);
 
                     if (!entityRelationships.ContainsKey(accountRef.Id))
-                        entityRelationships.Add(accountRef.Id, new Link { From = entity.ToEntityReference(), Description = GetEntityMetadata(org, entity.LogicalName).Attributes.Single(a => a.LogicalName == attribute.Key).DisplayName.UserLocalizedLabel.Label });
+                        entityRelationships.Add(accountRef.Id, new Link { From = entity.ToEntityReference(), Description = GetEntityMetadata(domainName, org, entity.LogicalName).Attributes.Single(a => a.LogicalName == attribute.Key).DisplayName.UserLocalizedLabel.Label });
                 }
             }
 
@@ -632,11 +630,11 @@ namespace MarkMpn.D365PostsBot.Controllers
                 var account = org.Retrieve("account", accountId, new ColumnSet("ownerid"));
 
                 // Recurse into the account
-                GetInterestedUsers(account, org, processedEntities, userIds, entityRelationships);
+                GetInterestedUsers(account, domainName, org, processedEntities, userIds, entityRelationships);
             }
         }
 
-        private Attachment ToAdaptiveCard(PostNotify post, string avatarUrl)
+        private Attachment ToAdaptiveCard(string domainName, PostNotify post, string avatarUrl)
         {
             var card = new AdaptiveCard("1.2")
             {
@@ -647,7 +645,7 @@ namespace MarkMpn.D365PostsBot.Controllers
                     {
                         Size = AdaptiveTextSize.Large,
                         Weight = AdaptiveTextWeight.Bolder,
-                        Text = GetLink(DomainName, post.Regarding)
+                        Text = GetLink(domainName, post.Regarding)
                     },
 
                     // Author
@@ -675,7 +673,7 @@ namespace MarkMpn.D365PostsBot.Controllers
                                     new AdaptiveTextBlock
                                     {
                                         Weight = AdaptiveTextWeight.Bolder,
-                                        Text = GetLink(DomainName, (EntityReference) (post.Comment ?? post.Post)["createdby"]),
+                                        Text = GetLink(domainName, (EntityReference) (post.Comment ?? post.Post)["createdby"]),
                                         Wrap = true
                                     },
                                     new AdaptiveTextBlock
@@ -702,7 +700,7 @@ namespace MarkMpn.D365PostsBot.Controllers
                                 {
                                     new AdaptiveTextBlock
                                     {
-                                        Text = FormatPostText((string) post.Post["text"]),
+                                        Text = FormatPostText((string) post.Post["text"], domainName),
                                         IsSubtle = post.Comment != null
                                     }
                                 },
@@ -735,7 +733,7 @@ namespace MarkMpn.D365PostsBot.Controllers
                                     Title = "OK",
                                     Data = new
                                     {
-                                        DomainName,
+                                        domainName,
                                         PostId = post.Post.Id
                                     }
                                 }
@@ -756,7 +754,7 @@ namespace MarkMpn.D365PostsBot.Controllers
                                     {
                                         Text = link.From.Id == post.Comment?.Id ? "*This comment*" :
                                                 link.From.Id == post.Post.Id ? "*This post*" :
-                                                GetLink(DomainName, link.From),
+                                                GetLink(domainName, link.From),
                                         HorizontalAlignment = AdaptiveHorizontalAlignment.Center,
                                         Spacing = AdaptiveSpacing.Small
                                     },
@@ -800,7 +798,7 @@ namespace MarkMpn.D365PostsBot.Controllers
                     new AdaptiveOpenUrlAction
                     {
                         Title = "View Record",
-                        Url = new Uri(GetUrl(DomainName, post.Regarding))
+                        Url = new Uri(GetUrl(domainName, post.Regarding))
                     }
                 }
             };
@@ -809,7 +807,7 @@ namespace MarkMpn.D365PostsBot.Controllers
             {
                 ((AdaptiveColumnSet)card.Body.Last()).Columns[0].Items.Add(new AdaptiveTextBlock
                 {
-                    Text = $"by {GetLink(DomainName, (EntityReference)post.Post["createdby"])} at {{{{DATE({post.Post["createdon"]:yyyy-MM-ddTHH:mm:ssZ})}}}} {{{{TIME({post.Post["createdon"]:yyyy-MM-ddTHH:mm:ssZ})}}}}",
+                    Text = $"by {GetLink(domainName, (EntityReference)post.Post["createdby"])} at {{{{DATE({post.Post["createdon"]:yyyy-MM-ddTHH:mm:ssZ})}}}} {{{{TIME({post.Post["createdon"]:yyyy-MM-ddTHH:mm:ssZ})}}}}",
                     Size = AdaptiveTextSize.Small
                 });
 
@@ -828,7 +826,7 @@ namespace MarkMpn.D365PostsBot.Controllers
                             {
                                 new AdaptiveTextBlock
                                 {
-                                    Text = FormatPostText((string)post.Comment["text"]),
+                                    Text = FormatPostText((string)post.Comment["text"], domainName),
                                     Wrap = true
                                 }
                             },
@@ -856,13 +854,13 @@ namespace MarkMpn.D365PostsBot.Controllers
             return $"[{entityRef.Name}]({GetUrl(domainName, entityRef)})";
         }
 
-        private string FormatPostText(string text)
+        private string FormatPostText(string text, string domainName)
         {
             // Tags in text stored as @[otc,guid,"text"]
             text = Regex.Replace(
                 text,
                 @"@\[(?<etc>[0-9]+),(?<id>[-0-9a-zA-Z]+),""(?<name>[^""]*)""]",
-                mention => $"[{mention.Groups["name"].Value}](https://{DomainName}/main.aspx?etc={mention.Groups["etc"].Value}&id={mention.Groups["id"].Value}&pagetype=entityrecord)");
+                mention => $"[{mention.Groups["name"].Value}](https://{domainName}/main.aspx?etc={mention.Groups["etc"].Value}&id={mention.Groups["id"].Value}&pagetype=entityrecord)");
 
             return text.Replace("\n", "\n\n");
         }
